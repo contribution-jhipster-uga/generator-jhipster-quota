@@ -1,0 +1,21 @@
+*/
+  @PostMapping("/products")
+  public ResponseEntity<Product> createProduct(@Valid @RequestBody Product product) throws URISyntaxException  {
+      log.debug("REST request to save Product : {}", product);
+      //throw new BadRequestAlertException("A new product cannot already have an ID", null, "erreurtest");
+      Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();
+      Optional<QuotaProduct> q1 = quotaProductRepository.findOneByUserLogin(userLogin.get());
+      System.out.println("-----------------------------------------");
+      System.out.println(q1.get().toString());
+      q1.get().setQuota(50);
+      quotaProductRepository.save(q1.get());
+
+
+      if (product.getId() != null) {
+          throw new BadRequestAlertException("A new product cannot already have an ID", ENTITY_NAME, "idexists");
+      }
+      Product result = productRepository.save(product);
+      return ResponseEntity.created(new URI("/api/products/" + result.getId()))
+          .headers(HeaderUtil.createEntityCreationAlert(ENTITY_NAME, result.getId().toString()))
+          .body(result);
+  }
