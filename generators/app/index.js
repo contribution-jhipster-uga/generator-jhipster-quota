@@ -103,7 +103,8 @@ module.exports = class extends BaseGenerator {
         const webappDir = jhipsterConstants.CLIENT_MAIN_SRC_DIR;
 
         let quotaJDL = "";
-        let entitiesQuota = "entity template {\n userLogin String unique,\n quota Integer\n}\n\n";
+        let entitiesQuota = "entity template {\n quota Integer\n}\n\n";
+        let relations = "relationship OneToOne {";
 
         let quotaEntities = [];
         let quotaRepositories = [];
@@ -112,7 +113,11 @@ module.exports = class extends BaseGenerator {
             quotaEntities.push(entity + "Quota");
             quotaRepositories.push(entity + "QuotaRepository");
             quotaJDL += entitiesQuota.replace('template', entity + "Quota");
+            relations += "\n\t"+entity+"Quota{user} to User";
         }
+
+        relations += "\n}";
+        quotaJDL += relations;
 
         fs.writeFileSync("quotaEntities.jh", quotaJDL, "utf8");
 
@@ -132,14 +137,16 @@ module.exports = class extends BaseGenerator {
                     `import org.springframework.beans.factory.annotation.Autowired;`,
                     `import ${this.packageName}.repository.${quotaRepositories[i]};`,
                     `import ${this.packageName}.security.SecurityUtils;`,
-                    `import ${this.packageName}.domain.${quotaEntities[i]};`
+                    `import ${this.packageName}.domain.${quotaEntities[i]};`,
+                    `import ${this.packageName}.domain.User;`,
+                    `import ${this.packageName}.repository.UserRepository;`
                 ]
             }, this);
 
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
                 needle: 'private final Logger log',
-                splicable: [`@Autowired`, `private ${quotaRepositories[i]} ${quotaRepositories[i]};`]
+                splicable: [`@Autowired`, `private ${quotaRepositories[i]} ${quotaRepositories[i]};`,`@Autowired`, `private UserRepository userRepository;`]
             }, this);
 
             var needleIf = `if (${this.allEntities[i].charAt(0).toLowerCase() + this.allEntities[i].substr(1)}.getId() != null) {`;
@@ -148,7 +155,8 @@ module.exports = class extends BaseGenerator {
                 needle: needleIf,
                 splicable: [
                     `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
-                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUserLogin(userLogin.get());`,
+                    `Optional<User> user = userRepository.findOneByLogin(userLogin.get());`,
+                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUser(user.get());`,
                     `if (q1.isPresent() && (q1.get().getQuota()==0)) {`,
                     `\tthrow new BadRequestAlertException("You no longer have the necessary quota to create this entity", null, "errorquota");`,
                     `}`
@@ -170,7 +178,7 @@ module.exports = class extends BaseGenerator {
                 file: `${javaDir}repository/${quotaRepositories[i]}.java`,
                 needle: `}`,
                 splicable: [
-                    `\tOptional<${quotaEntities[i]}> findOneByUserLogin(String userLogin);`
+                    `\tOptional<${quotaEntities[i]}> findOneByUser(User user);`
                 ]
             }, this);
 
@@ -178,7 +186,8 @@ module.exports = class extends BaseGenerator {
                 file: `${javaDir}repository/${quotaRepositories[i]}.java`,
                 needle: `import`,
                 splicable: [
-                    `import java.util.Optional;`
+                    `import java.util.Optional;`,
+                    `import com.mycompany.myapp.domain.User;`
                 ]
             }, this);
 
@@ -188,7 +197,8 @@ module.exports = class extends BaseGenerator {
                 needle: 'return ResponseEntity.ok().headers(HeaderUtil.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build();',
                 splicable: [
                     `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
-                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUserLogin(userLogin.get());`,
+                    `Optional<User> user = userRepository.findOneByLogin(userLogin.get());`,
+                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUser(user.get());`,
                     `if(q1.isPresent()) {`,
                     `\tq1.get().setQuota(q1.get().getQuota()+1);`,
                     `\t${quotaRepositories[i]}.save(q1.get());`,
