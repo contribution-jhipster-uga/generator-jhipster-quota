@@ -40,20 +40,40 @@ module.exports = class extends BaseGenerator {
     }
 
     prompting() {
-        const prompts = [{
-            type: 'input',
-            name: 'message',
-            message: 'Please put something',
-            default: 'hello world!'
-        }];
+        var path = `.jhipster`;
+        if (fs.existsSync(path)) {
+            var allEntitiesJSON = this.getExistingEntities();
+            var allEntities = [];
+            for (let entity of allEntitiesJSON) {
+                allEntities.push(entity.name);
+            }
 
-        const done = this.async();
-        this.prompt(prompts).then((props) => {
-            this.props = props;
-            // To access props later use this.props.someOption;
+            const done = this.async();
+            const prompts = [{
+                type: 'confirm',
+                name: 'allQuotas',
+                message: `Would you like to create quota for every entity you have (${allEntities})?`,
+                default: true
+            }, {
+                when: response => response.allQuotas === false,
+                type: 'checkbox',
+                name: 'entityQuotas',
+                message: `Please chose which entities you want to add a quota for`,
+                choices: response => allEntities
+            }];
 
-            done();
-        });
+            this.prompt(prompts).then(prompt => {
+                if (prompt.allQuotas === true) {
+                    this.allEntities = allEntities;
+                } else {
+                    this.allEntities = prompt.entityQuotas;
+                }
+                done();
+            });
+        } else {
+            console.log("You don't have any entity to create quota for");
+            process.exit(1);
+        }
     }
 
     writing() {
@@ -82,37 +102,16 @@ module.exports = class extends BaseGenerator {
         const resourceDir = jhipsterConstants.SERVER_MAIN_RES_DIR;
         const webappDir = jhipsterConstants.CLIENT_MAIN_SRC_DIR;
 
-        // variable from questions
-        this.message = this.props.message;
-
-        // show all variables
-        this.log('\n--- some config read from config ---');
-        this.log(`baseName=${this.baseName}`);
-        this.log(`packageName=${this.packageName}`);
-        this.log(`clientFramework=${this.clientFramework}`);
-        this.log(`clientPackageManager=${this.clientPackageManager}`);
-        this.log(`buildTool=${this.buildTool}`);
-
-        this.log('\n--- some function ---');
-        this.log(`angularAppName=${this.angularAppName}`);
-
-        this.log('\n--- some const ---');
-        this.log(`javaDir=${javaDir}`);
-        this.log(`resourceDir=${resourceDir}`);
-        this.log(`webappDir=${webappDir}`);
-
-        this.log('\n--- variables from questions ---');
-        this.log(`\nmessage=${this.message}`);
-        this.log('------\n');
-
         let quotaJDL = "";
         let entitiesQuota = "entity template {\n userLogin String unique,\n quota Integer\n}\n\n";
 
-        var path = `.jhipster`;
-        var allEntities = fs.readdirSync(path);
+        let quotaEntities = [];
+        let quotaRepositories = [];
 
-        for (var i = 0; i < allEntities.length; i++) {
-            quotaJDL += entitiesQuota.replace('template', allEntities[i].replace(".json", "Quota"));
+        for (let entity of this.allEntities) {
+            quotaEntities.push(entity + "Quota");
+            quotaRepositories.push(entity + "QuotaRepository");
+            quotaJDL += entitiesQuota.replace('template', entity + "Quota");
         }
 
         fs.writeFileSync("quotaEntities.jh", quotaJDL, "utf8");
@@ -124,32 +123,32 @@ module.exports = class extends BaseGenerator {
 
         var pathRessource = `${javaDir}web/rest/`;
         var PathRessourceFile = "";
-        for (var i = 0; i < allEntities.length; i++) {
-            PathRessourceFile = pathRessource + allEntities[i].replace(".json", "Resource.java");
+        for (var i = 0; i < this.allEntities.length; i++) {
+            PathRessourceFile = pathRessource + this.allEntities[i] + "Resource.java";
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
                 needle: 'import org.slf4j.Logger;',
                 splicable: [
                     `import org.springframework.beans.factory.annotation.Autowired;`,
-                    `import ${this.packageName}.repository.${allEntities[i].replace(".json", "QuotaRepository")};`,
+                    `import ${this.packageName}.repository.${quotaRepositories[i]};`,
                     `import ${this.packageName}.security.SecurityUtils;`,
-                    `import ${this.packageName}.domain.${allEntities[i].replace(".json", "Quota")};`
+                    `import ${this.packageName}.domain.${quotaEntities[i]};`
                 ]
             }, this);
 
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
                 needle: 'private final Logger log',
-                splicable: [`@Autowired`, `private ${allEntities[i].replace(".json", "QuotaRepository")} ${allEntities[i].replace(".json", "QuotaRepository")};`]
+                splicable: [`@Autowired`, `private ${quotaRepositories[i]} ${quotaRepositories[i]};`]
             }, this);
 
-            var needleIf = `if (${allEntities[i].charAt(0).toLowerCase() + allEntities[i].substr(1).replace(".json", "")}.getId() != null) {`;
+            var needleIf = `if (${this.allEntities[i].charAt(0).toLowerCase() + this.allEntities[i].substr(1)}.getId() != null) {`;
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
                 needle: needleIf,
                 splicable: [
                     `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
-                    `Optional<${allEntities[i].replace(".json", "Quota")}> q1 = ${allEntities[i].replace(".json", "QuotaRepository")}.findOneByUserLogin(userLogin.get());`,
+                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUserLogin(userLogin.get());`,
                     `if (q1.isPresent() && (q1.get().getQuota()==0)) {`,
                     `\tthrow new BadRequestAlertException("You no longer have the necessary quota to create this entity", null, "errorquota");`,
                     `}`
@@ -162,36 +161,37 @@ module.exports = class extends BaseGenerator {
                 splicable: [
                     `if(q1.isPresent()) {`,
                     `\tq1.get().setQuota(q1.get().getQuota()-1);`,
-                    `\t${allEntities[i].replace(".json", "Quota")}Repository.save(q1.get());`,
+                    `\t${quotaRepositories[i]}.save(q1.get());`,
                     `}`
                 ]
             }, this);
 
             jhipsterUtils.rewriteFile({
-                file: `${javaDir}repository/${allEntities[i].replace(".json", "QuotaRepository.java")}`,
+                file: `${javaDir}repository/${quotaRepositories[i]}.java`,
                 needle: `}`,
                 splicable: [
-                    `\tOptional<${allEntities[i].replace(".json", "Quota")}> findOneByUserLogin(String userLogin);`
+                    `\tOptional<${quotaEntities[i]}> findOneByUserLogin(String userLogin);`
                 ]
             }, this);
 
             jhipsterUtils.rewriteFile({
-                file: `${javaDir}repository/${allEntities[i].replace(".json", "QuotaRepository.java")}`,
+                file: `${javaDir}repository/${quotaRepositories[i]}.java`,
                 needle: `import`,
                 splicable: [
                     `import java.util.Optional;`
                 ]
             }, this);
 
+
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
-                needle: `${allEntities[i].charAt(0).toLowerCase() + allEntities[i].substr(1).replace(".json", "Repository")}.deleteById(id);`,
+                needle: 'return ResponseEntity.ok().headers(HeaderUtil.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build();',
                 splicable: [
                     `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
-                    `Optional<${allEntities[i].replace(".json", "Quota")}> q1 = ${allEntities[i].replace(".json", "Quota")}Repository.findOneByUserLogin(userLogin.get());`,
+                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUserLogin(userLogin.get());`,
                     `if(q1.isPresent()) {`,
                     `\tq1.get().setQuota(q1.get().getQuota()+1);`,
-                    `\t${allEntities[i].replace(".json", "Quota")}Repository.save(q1.get());`,
+                    `\t${quotaRepositories[i]}.save(q1.get());`,
                     `}`
                 ]
             }, this);
@@ -199,34 +199,21 @@ module.exports = class extends BaseGenerator {
         }
 
         var pathLangs = `${webappDir}i18n/`;
-        var allLangs = fs.readdirSync(pathLangs);
-
+        var allLangs = this.getAllInstalledLanguages();
         for (var i = 0; i < allLangs.length; i++) {
-          jhipsterUtils.rewriteFile({
-              file: `${webappDir}i18n/${allLangs[i]}/global.json`,
-              needle: `"idnull":`,
-              splicable: [
-                  `"errorquota": "You no longer have the necessary quota to create this entity",`
-              ]
-          }, this);
+            jhipsterUtils.rewriteFile({
+                file: `${webappDir}i18n/${allLangs[i]}/global.json`,
+                needle: `"idnull":`,
+                splicable: [
+                    `"errorquota": "You no longer have the necessary quota to create this entity",`
+                ]
+            }, this);
         }
 
 
-        console.log(quotaJDL);
-
-        if (this.clientFramework === 'angular1') {
-            this.template('dummy.txt', 'dummy-angular1.txt');
-        }
-        if (this.clientFramework === 'angularX' || this.clientFramework === 'angular2') {
-            this.template('dummy.txt', 'dummy-angularX.txt');
-        }
-        if (this.buildTool === 'maven') {
-            this.template('dummy.txt', 'dummy-maven.txt');
-        }
-        if (this.buildTool === 'gradle') {
-            this.template('dummy.txt', 'dummy-gradle.txt');
-        }
     }
+
+
 
     install() {
         let logMsg =

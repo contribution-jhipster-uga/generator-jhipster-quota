@@ -1,15 +1,16 @@
 {
   "name": "generator-jhipster-quota",
-  "version": "0.0.0",
-  "description": "Description",
+  "version": "1.0.1",
+  "description": "This module allows you to create entities that allow you to manage an entity creation quota for each user. All you will have to do is enter a quota for each user directly into the database. If you do not enter a quota, it will be basic unlimited for each user.",
   "keywords": [
     "yeoman-generator",
     "jhipster-module",
-    "jhipster-5"
+    "jhipster-5",
+    "quota"
   ],
   "homepage": "https://github.com/contribution-jhipster-uga/generator-jhipster-quota",
   "author": {
-    "name": "Contribution Jhipster UGA",
+    "name": "Contribution Jhipster UGA, Julien COURTIAL, Hugo GROS-DAILLON, Cédric LAFRASSE, Bastien TERRIER (https://github.com/contribution-jhipster-uga/)",
     "email": "contribution.jhipster.uga@gmail.com",
     "url": "https://github.com/contribution-jhipster-uga"
   },
