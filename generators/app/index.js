@@ -108,10 +108,17 @@ module.exports = class extends BaseGenerator {
 
         let quotaEntities = [];
         let quotaRepositories = [];
+        let repositories = [];
+
+        if(this.allEntities.length == 0){
+          console.log("You didn't select any entity.");
+          process.exit(1);
+        }
 
         for (let entity of this.allEntities) {
             quotaEntities.push(entity + "Quota");
             quotaRepositories.push(entity + "QuotaRepository");
+            repositories.push(entity + "Repository");
             quotaJDL += entitiesQuota.replace('template', entity + "Quota");
             relations += "\n\t"+entity+"Quota{user} to User";
         }
@@ -125,6 +132,8 @@ module.exports = class extends BaseGenerator {
             shelljs.echo('Error: import fail');
             shelljs.exit(1);
         }
+
+        shelljs.echo("n\n");
 
         var pathRessource = `${javaDir}web/rest/`;
         var PathRessourceFile = "";
@@ -149,6 +158,25 @@ module.exports = class extends BaseGenerator {
                 splicable: [`@Autowired`, `private ${quotaRepositories[i]} ${quotaRepositories[i]};`,`@Autowired`, `private UserRepository userRepository;`]
             }, this);
 
+            let file = fs.readFileSync(PathRessourceFile);
+            if(!file.includes(`${repositories[i].charAt(0).toLowerCase()}${repositories[i].substr(1)}`)){
+
+              jhipsterUtils.rewriteFile({
+                  file: PathRessourceFile,
+                  needle: `public ${this.allEntities[i]}Resource`,
+                  splicable: [`@Autowired`,`private ${repositories[i]} ${this.allEntities[i].toLowerCase()}Repository;`]
+              }, this);
+
+              jhipsterUtils.rewriteFile({
+                  file: PathRessourceFile,
+                  needle: 'import org.slf4j.Logger;',
+                  splicable: [
+                      `import ${this.packageName}.repository.${this.allEntities[i]}Repository;`
+                  ]
+              }, this);
+
+            }
+
             var needleIf = `if (${this.allEntities[i].charAt(0).toLowerCase() + this.allEntities[i].substr(1)}.getId() != null) {`;
             jhipsterUtils.rewriteFile({
                 file: PathRessourceFile,
@@ -157,22 +185,15 @@ module.exports = class extends BaseGenerator {
                     `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
                     `Optional<User> user = userRepository.findOneByLogin(userLogin.get());`,
                     `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUser(user.get());`,
-                    `if (q1.isPresent() && (q1.get().getQuota()==0)) {`,
-                    `\tthrow new BadRequestAlertException("You no longer have the necessary quota to create this entity", null, "errorquota");`,
-                    `}`
+                    `if (q1.isPresent()){`,
+                    `\tlong count = ${repositories[i].charAt(0).toLowerCase()}${repositories[i].substr(1)}.countByCreatedBy(userLogin.get());`,
+                    `\tif (count >= q1.get().getQuota()) {`,
+                    `\t\tthrow new BadRequestAlertException("You no longer have the necessary quota to create this entity", null, "errorquota");`,
+                    `\t}`,
+                    `}`,
                 ]
             }, this);
 
-            jhipsterUtils.rewriteFile({
-                file: PathRessourceFile,
-                needle: `return ResponseEntity.created`,
-                splicable: [
-                    `if(q1.isPresent()) {`,
-                    `\tq1.get().setQuota(q1.get().getQuota()-1);`,
-                    `\t${quotaRepositories[i]}.save(q1.get());`,
-                    `}`
-                ]
-            }, this);
 
             jhipsterUtils.rewriteFile({
                 file: `${javaDir}repository/${quotaRepositories[i]}.java`,
@@ -191,19 +212,11 @@ module.exports = class extends BaseGenerator {
                 ]
             }, this);
 
-
-            jhipsterUtils.rewriteFile({
-                file: PathRessourceFile,
-                needle: 'return ResponseEntity.ok().headers(HeaderUtil.createEntityDeletionAlert(ENTITY_NAME, id.toString())).build();',
-                splicable: [
-                    `Optional<String> userLogin = SecurityUtils.getCurrentUserLogin();`,
-                    `Optional<User> user = userRepository.findOneByLogin(userLogin.get());`,
-                    `Optional<${quotaEntities[i]}> q1 = ${quotaRepositories[i]}.findOneByUser(user.get());`,
-                    `if(q1.isPresent()) {`,
-                    `\tq1.get().setQuota(q1.get().getQuota()+1);`,
-                    `\t${quotaRepositories[i]}.save(q1.get());`,
-                    `}`
-                ]
+            jhipsterUtils.replaceContent({
+                file: `${javaDir}repository/${repositories[i]}.java`,
+                pattern: `public interface ${repositories[i]} extends JpaRepository<${this.allEntities[i]}, Long> {`,
+                content: `public interface ${repositories[i]} extends JpaRepository<${this.allEntities[i]}, Long> {\n\n\tlong countByCreatedBy(String userLogin);`,
+                regex : false
             }, this);
 
         }

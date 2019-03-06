@@ -17,6 +17,9 @@ As this is a [JHipster](http://jhipster.github.io/) module, we expect you have J
 
 - [Installing JHipster](https://jhipster.github.io/installation.html)
 
+You must have allowed auditing on the entities to have a field createdBy for those you want to put a quota on.
+To do it easily you can use this [generator](https://github.com/hipster-labs/generator-jhipster-entity-audit).
+
 # Installation
 
 ## With Yarn
