@@ -221,7 +221,6 @@ module.exports = class extends BaseGenerator {
 
         }
 
-        var pathLangs = `${webappDir}i18n/`;
         var allLangs = this.getAllInstalledLanguages();
         for (var i = 0; i < allLangs.length; i++) {
             jhipsterUtils.rewriteFile({
